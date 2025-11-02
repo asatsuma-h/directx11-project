@@ -1,6 +1,7 @@
 ﻿#include <windows.h>                    // Win32 API に必要
 #include <d3d11.h>                      // Direct3D 11 の主要インターフェース
 #include <d3dcompiler.h>                // HLSL シェーダーコンパイルに必要
+#include <cstdint>
 #pragma comment(lib, "d3d11.lib")       // D3D11 の本体
 #pragma comment(lib, "dxgi.lib")        // スワップチェーンなど
 #pragma comment(lib, "d3dcompiler.lib") // シェーダーコンパイル用
@@ -15,6 +16,14 @@ ID3D11RenderTargetView* g_RTV = nullptr;        // レンダーターゲット�
 ID3D11Texture2D* g_DepthTex = nullptr;          // 深度ステンシル用テクスチャ
 ID3D11DepthStencilView* g_DSV = nullptr;        // 深度ステンシルビュー
 D3D_FEATURE_LEVEL g_FeatureLevel{};
+
+// 描画用リソース
+struct Vertex { float pos[3]; float color[3]; };
+ID3D11Buffer* g_VB = nullptr;
+ID3D11Buffer* g_IB = nullptr;
+ID3D11VertexShader* g_VS = nullptr;
+ID3D11PixelShader* g_PS = nullptr;
+ID3D11InputLayout* g_InputLayout = nullptr;
 
 /*
 * バックバッファからRenderTargetViewとDepthStencilを作成
@@ -108,6 +117,108 @@ bool InitD3D(HWND hWnd, UINT width, UINT height)
 }
 
 /*
+* 頂点・インデックスバッファ作成
+*/
+void CreateTriangleBuffers()
+{
+    // NDC座標（-1〜1範囲内）で三角形を定義
+    Vertex vertices[] = {
+        {{ 0.0f,  0.5f, 0.f}, {1.f, 0.f, 0.f}}, // 上（赤）
+        {{ 0.5f, -0.5f, 0.f}, {0.f, 1.f, 0.f}}, // 右下（緑）
+        {{-0.5f, -0.5f, 0.f}, {0.f, 0.f, 1.f}}, // 左下（青）
+    };
+
+    D3D11_BUFFER_DESC vbd{};
+    vbd.ByteWidth = sizeof(vertices);
+    vbd.Usage = D3D11_USAGE_DEFAULT;
+    vbd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA vinit{};
+    vinit.pSysMem = vertices;
+    g_Device->CreateBuffer(&vbd, &vinit, &g_VB);
+
+    // 頂点インデックス
+    uint16_t indices[] = { 0, 1, 2 };
+    D3D11_BUFFER_DESC ibd{};
+    ibd.ByteWidth = sizeof(indices);
+    ibd.Usage = D3D11_USAGE_DEFAULT;
+    ibd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA iinit{};
+    iinit.pSysMem = indices;
+    g_Device->CreateBuffer(&ibd, &iinit, &g_IB);
+}
+
+/*
+* シェーダー作成
+*/
+void CreateShadersAndInputLayout()
+{
+    ID3DBlob* vsBlob = nullptr;
+    ID3DBlob* psBlob = nullptr;
+    ID3DBlob* errorBlob = nullptr;
+
+    HRESULT hr = D3DCompileFromFile(
+        L"shaders.hlsl", nullptr, nullptr,
+        "VSMain", "vs_5_0", 0, 0, &vsBlob, &errorBlob);
+
+    if (FAILED(hr)) {
+        if (errorBlob) {
+            MessageBoxA(nullptr, (char*)errorBlob->GetBufferPointer(), "Vertex Shader Compile Error", MB_OK);
+            errorBlob->Release();
+        }
+        else {
+            MessageBoxW(nullptr, L"shaders.hlsl が見つかりません。", L"Shader Compile Error", MB_OK);
+        }
+        return;
+    }
+
+    // ピクセルシェーダー
+    D3DCompileFromFile(L"shaders.hlsl", 
+        nullptr, nullptr, "PSMain", "ps_5_0", 0, 0, &psBlob, &errorBlob);
+    if (errorBlob) { OutputDebugStringA((char*)errorBlob->GetBufferPointer()); errorBlob->Release(); }
+
+    g_Device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &g_VS);
+    g_Device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &g_PS);
+
+    // 入力レイアウト
+    D3D11_INPUT_ELEMENT_DESC ied[] = {
+        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,
+         D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,
+         D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    };
+    g_Device->CreateInputLayout(
+        ied, _countof(ied),
+        vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(),
+        &g_InputLayout);
+
+    vsBlob->Release();
+    psBlob->Release();
+}
+
+/*
+* 三角形描画
+*/
+void RenderTriangle()
+{
+    const float clear[4] = { 0.1f, 0.1f, 0.25f, 1.0f };
+    g_Context->ClearRenderTargetView(g_RTV, clear);
+    g_Context->ClearDepthStencilView(g_DSV, D3D11_CLEAR_DEPTH, 1.0f, 0);
+
+    UINT stride = sizeof(Vertex), offset = 0;
+    g_Context->IASetVertexBuffers(0, 1, &g_VB, &stride, &offset);
+    g_Context->IASetIndexBuffer(g_IB, DXGI_FORMAT_R16_UINT, 0);
+    g_Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    g_Context->IASetInputLayout(g_InputLayout);
+
+    g_Context->VSSetShader(g_VS, nullptr, 0);
+    g_Context->PSSetShader(g_PS, nullptr, 0);
+    g_Context->OMSetRenderTargets(1, &g_RTV, g_DSV);
+
+    g_Context->DrawIndexed(3, 0, 0);
+    g_SwapChain->Present(1, 0);
+}
+
+/*
 * 背景をクリア
 */
 void RenderClear()
@@ -191,6 +302,9 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow)
     // Direct3D11 初期化
     if (!InitD3D(g_hWnd, g_Width, g_Height)) return -1;
 
+    // 三角形関連の初期化
+    CreateTriangleBuffers();
+    CreateShadersAndInputLayout();
 
     UpdateWindow(g_hWnd);
 
@@ -204,7 +318,7 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow)
         }
         else {
             // 将来的にはここで「フレーム更新・描画」を回す（DX初期化後）
-            RenderClear();
+            RenderTriangle();
             //Sleep(1); // ひとまずCPUを休ませる
         }
     }
