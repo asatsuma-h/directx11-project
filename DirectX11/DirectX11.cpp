@@ -118,10 +118,38 @@ void RenderClear()
     g_SwapChain->Present(1, 0); // バックバッファを前面に表示
 }
 
+/*
+* WM_SIZEイベントで再生成
+*/
+void OnResize(UINT width, UINT height)
+{
+    if (!g_SwapChain) return;
+    if (width == 0 || height == 0) return;
+
+    // 既存リソースの解放
+    g_Context->OMSetRenderTargets(0, nullptr, nullptr);
+    if (g_RTV) { g_RTV->Release(); g_RTV = nullptr; }
+    if (g_DSV) { g_DSV->Release(); g_DSV = nullptr; }
+    if (g_DepthTex) { g_DepthTex->Release(); g_DepthTex = nullptr; }
+
+    // スワップチェーンのサイズ変更
+    g_SwapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
+
+    // 新しいサイズで再生成
+    CreateRTVAndDSV(width, height);
+}
+
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     switch (msg)
     {
+    case WM_SIZE:
+        g_Width = LOWORD(lParam);
+        g_Height = HIWORD(lParam);
+        // ウィンドウ最小化の場合は実行しない
+        if (wParam != SIZE_MINIMIZED) OnResize(g_Width, g_Height);
+        return 0;
+
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
