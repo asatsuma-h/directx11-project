@@ -35,6 +35,14 @@ bool D3DApp::Initialize(HWND hWnd, UINT width, UINT height)
     cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     mDevice->CreateBuffer(&cbd, nullptr, mConstantBuffer.GetAddressOf());
 
+    // 深度ステンシルステート作成
+    D3D11_DEPTH_STENCIL_DESC dsDesc{};
+    dsDesc.DepthEnable = TRUE;                              // 深度テストON
+    dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;     // 深度書き込みON
+    dsDesc.DepthFunc = D3D11_COMPARISON_LESS;               // Zが小さい(カメラに近い)方を採用
+    mDevice->CreateDepthStencilState(&dsDesc, mDepthState.GetAddressOf());
+    mContext->OMSetDepthStencilState(mDepthState.Get(), 1);
+
     return true;
 }
 
@@ -69,11 +77,20 @@ void D3DApp::CreateRenderTargetAndDepth(UINT width, UINT height)
 void D3DApp::CreateTriangle()
 {
     Vertex vertices[] = {
-        {{ 0.0f,  0.5f, 0.f}, {1.f, 0.f, 0.f}},
-        {{ 0.5f, -0.5f, 0.f}, {0.f, 1.f, 0.f}},
-        {{-0.5f, -0.5f, 0.f}, {0.f, 0.f, 1.f}},
+        // Z = 0.5（奥）
+        {{  0.0f,  0.5f, 0.5f}, {1.f, 0.f, 0.f}},
+        {{  0.5f, -0.5f, 0.5f}, {0.f, 1.f, 0.f}},
+        {{ -0.5f, -0.5f, 0.5f}, {0.f, 0.f, 1.f}},
+
+        // Z = 0.3（手前）
+        {{  0.0f,  0.7f, 0.3f}, {1.f, 1.f, 0.f}},
+        {{  0.7f, -0.3f, 0.3f}, {0.f, 1.f, 1.f}},
+        {{ -0.7f, -0.3f, 0.3f}, {1.f, 0.f, 1.f}},
     };
-    uint16_t indices[] = { 0,1,2 };
+    uint16_t indices[] = {
+        0, 1, 2, // 奥
+        3, 4, 5  // 手前
+    };
 
     D3D11_BUFFER_DESC vbd{};
     vbd.ByteWidth = sizeof(vertices);
@@ -161,7 +178,7 @@ void D3DApp::Render(float time)
     mContext->PSSetShader(mPS.Get(), nullptr, 0);
 
     // 描画
-    mContext->DrawIndexed(3, 0, 0);
+    mContext->DrawIndexed(6, 0, 0);
     mSwapChain->Present(1, 0);
 }
 
