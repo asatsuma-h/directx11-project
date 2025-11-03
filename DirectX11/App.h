@@ -44,12 +44,20 @@ private:
 	ComPtr<ID3D11PixelShader> mPS;
 	ComPtr<ID3D11InputLayout> mInputLayout;
 
-	struct Vertex { XMFLOAT3 pos; XMFLOAT3 color; };
+	struct Vertex 
+	{ 
+		XMFLOAT3 pos; 
+		XMFLOAT3 normal;
+		XMFLOAT3 color;
+	};
 
 	struct ConstantBufferData
 	{
 		XMMATRIX world;
 		XMMATRIX view;
 		XMMATRIX proj;
+		XMFLOAT3 lightDir;		// 光の方向
+		float pad1;				// 16バイト境界用パディング
+		XMFLOAT4 lightColor;	// 光の色
 	};
 };

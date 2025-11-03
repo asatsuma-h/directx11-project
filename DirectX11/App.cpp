@@ -77,19 +77,12 @@ void D3DApp::CreateRenderTargetAndDepth(UINT width, UINT height)
 void D3DApp::CreateTriangle()
 {
     Vertex vertices[] = {
-        // Z = 0.5（奥）
-        {{  0.0f,  0.5f, 0.5f}, {1.f, 0.f, 0.f}},
-        {{  0.5f, -0.5f, 0.5f}, {0.f, 1.f, 0.f}},
-        {{ -0.5f, -0.5f, 0.5f}, {0.f, 0.f, 1.f}},
-
-        // Z = 0.3（手前）
-        {{  0.0f,  0.7f, 0.3f}, {1.f, 1.f, 0.f}},
-        {{  0.7f, -0.3f, 0.3f}, {0.f, 1.f, 1.f}},
-        {{ -0.7f, -0.3f, 0.3f}, {1.f, 0.f, 1.f}},
+        {{ 0.0f,  0.5f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f, 0.f}}, // 赤
+        {{ 0.5f, -0.5f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 1.f, 0.f}}, // 緑
+        {{-0.5f, -0.5f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 0.f, 1.f}}, // 青
     };
     uint16_t indices[] = {
         0, 1, 2, // 奥
-        3, 4, 5  // 手前
     };
 
     D3D11_BUFFER_DESC vbd{};
@@ -140,6 +133,8 @@ void D3DApp::CreateShadersAndInputLayout()
     D3D11_INPUT_ELEMENT_DESC layout[] = {
         {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,
          D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,
+        D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,
          D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
@@ -159,6 +154,12 @@ void D3DApp::Render(float time)
     cb.world = XMMatrixTranspose(world);
     cb.view = XMMatrixTranspose(XMMatrixLookAtLH(eye, at, up));
     cb.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(XMConvertToRadians(60.0f), (float)mWidth / mHeight, 0.1f, 10.0f));
+
+    // ライトの定数バッファ更新
+    cb.lightDir = XMFLOAT3(0.0f, -1.0f, 1.0f);   // 斜め前から照らす光
+    cb.lightColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+
+    // GPUで情報を送信
     mContext->UpdateSubresource(mConstantBuffer.Get(), 0, nullptr, &cb, 0, 0);
 
     // クリア
@@ -176,9 +177,10 @@ void D3DApp::Render(float time)
     mContext->VSSetShader(mVS.Get(), nullptr, 0);
     mContext->VSSetConstantBuffers(0, 1, mConstantBuffer.GetAddressOf());
     mContext->PSSetShader(mPS.Get(), nullptr, 0);
+    mContext->PSSetConstantBuffers(0, 1, mConstantBuffer.GetAddressOf());
 
     // 描画
-    mContext->DrawIndexed(6, 0, 0);
+    mContext->DrawIndexed(3, 0, 0);
     mSwapChain->Present(1, 0);
 }
 
