@@ -4,10 +4,13 @@
 #include <DirectXMath.h>
 #include <wrl.h>
 #include <cstdint>
+#include <string>
+#include <vector>
 
 #pragma comment(lib, "d3d11.lib")       // D3D11 の本体
 #pragma comment(lib, "dxgi.lib")        // スワップチェーンなど
 #pragma comment(lib, "d3dcompiler.lib") // シェーダーコンパイル用
+#pragma comment(lib, "libfbxsdk.lib")	// FBX SDK
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -25,6 +28,7 @@ private:
 	void CreateRenderTargetAndDepth(UINT width, UINT height);
 	void CreateTriangle();
 	void CreateShadersAndInputLayout();
+	bool LoadFBXModel(const std::string& path);
 
 private:
 	UINT mWidth = 1280;
@@ -48,7 +52,7 @@ private:
 	{ 
 		XMFLOAT3 pos; 
 		XMFLOAT3 normal;
-		XMFLOAT3 color;
+		XMFLOAT2 uv;
 	};
 
 	struct ConstantBufferData
@@ -60,4 +64,6 @@ private:
 		float pad1;				// 16バイト境界用パディング
 		XMFLOAT4 lightColor;	// 光の色
 	};
+
+	UINT mIndexCount = 0;		// FBX読み込み後のインデックス数
 };

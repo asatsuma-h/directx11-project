@@ -1,6 +1,9 @@
 #include "App.h"
 #include <d3dcompiler.h>
-
+#include <fbxsdk.h>      // FBX SDKメインヘッダー
+#include <vector>
+#include <string>
+#include <iostream>
 bool D3DApp::Initialize(HWND hWnd, UINT width, UINT height)
 {
     mWidth = width;
@@ -25,7 +28,8 @@ bool D3DApp::Initialize(HWND hWnd, UINT width, UINT height)
     if (FAILED(hr)) return false;
 
     CreateRenderTargetAndDepth(width, height);
-    CreateTriangle();
+    //CreateTriangle();
+    LoadFBXModel("Assets/model.fbx");
     CreateShadersAndInputLayout();
 
     // 定数バッファ作成
@@ -45,6 +49,106 @@ bool D3DApp::Initialize(HWND hWnd, UINT width, UINT height)
 
     return true;
 }
+
+bool D3DApp::LoadFBXModel(const std::string& path)
+{
+    FbxManager* manager = FbxManager::Create();
+    FbxIOSettings* ios = FbxIOSettings::Create(manager, IOSROOT);
+    manager->SetIOSettings(ios);
+
+    FbxImporter* importer = FbxImporter::Create(manager, "");
+    if (!importer->Initialize(path.c_str(), -1, manager->GetIOSettings()))
+    {
+        MessageBoxA(nullptr, importer->GetStatus().GetErrorString(), "FBX Import Error", MB_OK);
+        return false;
+    }
+
+    FbxScene* scene = FbxScene::Create(manager, "scene");
+    importer->Import(scene);
+    importer->Destroy();
+
+    // 最初のメッシュを探す
+    FbxNode* root = scene->GetRootNode();
+    if (!root) return false;
+
+    FbxMesh* mesh = nullptr;
+    for (int i = 0; i < root->GetChildCount(); i++) {
+        FbxNode* node = root->GetChild(i);
+        if (node->GetMesh()) {
+            mesh = node->GetMesh();
+            break;
+        }
+    }
+    if (!mesh) return false;
+
+    int vCount = mesh->GetControlPointsCount();
+    FbxVector4* ctrlPoints = mesh->GetControlPoints();
+
+    std::vector<Vertex> vertices(vCount);
+    for (int i = 0; i < vCount; i++) {
+        vertices[i].pos = {
+            (float)ctrlPoints[i][0],
+            (float)ctrlPoints[i][1],
+            (float)ctrlPoints[i][2]
+        };
+        vertices[i].normal = { 0, 0, 0 };
+        vertices[i].uv = { 0, 0 };
+    }
+
+    std::vector<uint32_t> indices;
+    int polyCount = mesh->GetPolygonCount();
+    for (int p = 0; p < polyCount; p++) {
+        int polySize = mesh->GetPolygonSize(p);
+        for (int v = 0; v < polySize; v++) {
+            int idx = mesh->GetPolygonVertex(p, v);
+            indices.push_back(idx);
+        }
+    }
+
+    // 法線とUVを取得
+    if (mesh->GetElementNormalCount() > 0) {
+        FbxGeometryElementNormal* normalElem = mesh->GetElementNormal(0);
+        for (int i = 0; i < indices.size(); i++) {
+            int ctrlIdx = indices[i];
+            FbxVector4 n = (normalElem->GetMappingMode() == FbxGeometryElement::eByControlPoint)
+                ? normalElem->GetDirectArray().GetAt(ctrlIdx)
+                : normalElem->GetDirectArray().GetAt(i);
+            vertices[ctrlIdx].normal = { (float)n[0], (float)n[1], (float)n[2] };
+        }
+    }
+
+    if (mesh->GetElementUVCount() > 0) {
+        FbxGeometryElementUV* uvElem = mesh->GetElementUV(0);
+        for (int i = 0; i < indices.size(); i++) {
+            int ctrlIdx = indices[i];
+            FbxVector2 uv;
+            bool unmapped;
+            mesh->GetPolygonVertexUV(i / 3, i % 3, uvElem->GetName(), uv, unmapped);
+            vertices[ctrlIdx].uv = { (float)uv[0], 1.0f - (float)uv[1] };
+        }
+    }
+
+    // DirectXバッファ作成
+    D3D11_BUFFER_DESC vbd{};
+    vbd.ByteWidth = UINT(sizeof(Vertex) * vertices.size());
+    vbd.Usage = D3D11_USAGE_DEFAULT;
+    vbd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA vinit{ vertices.data() };
+    mDevice->CreateBuffer(&vbd, &vinit, mVB.GetAddressOf());
+
+    D3D11_BUFFER_DESC ibd{};
+    ibd.ByteWidth = UINT(sizeof(uint32_t) * indices.size());
+    ibd.Usage = D3D11_USAGE_DEFAULT;
+    ibd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA iinit{ indices.data() };
+    mDevice->CreateBuffer(&ibd, &iinit, mIB.GetAddressOf());
+
+    mIndexCount = static_cast<UINT>(indices.size());
+
+    manager->Destroy();
+    return true;
+}
+
 
 void D3DApp::CreateRenderTargetAndDepth(UINT width, UINT height)
 {
@@ -77,9 +181,9 @@ void D3DApp::CreateRenderTargetAndDepth(UINT width, UINT height)
 void D3DApp::CreateTriangle()
 {
     Vertex vertices[] = {
-        {{ 0.0f,  0.5f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f, 0.f}}, // 赤
-        {{ 0.5f, -0.5f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 1.f, 0.f}}, // 緑
-        {{-0.5f, -0.5f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 0.f, 1.f}}, // 青
+        {{ 0.0f,  0.5f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f}}, // 赤
+        {{ 0.5f, -0.5f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 1.f}}, // 緑
+        {{-0.5f, -0.5f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 0.f}}, // 青
     };
     uint16_t indices[] = {
         0, 1, 2, // 奥
