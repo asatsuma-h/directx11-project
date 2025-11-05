@@ -2,6 +2,7 @@
 #include <Windows.h>
 #include <d3d11.h>
 #include <DirectXMath.h>
+#include <DirectXTK/WICTextureLoader.h>
 #include <wrl.h>
 #include <cstdint>
 #include <string>
@@ -11,6 +12,7 @@
 #pragma comment(lib, "dxgi.lib")        // スワップチェーンなど
 #pragma comment(lib, "d3dcompiler.lib") // シェーダーコンパイル用
 #pragma comment(lib, "libfbxsdk.lib")	// FBX SDK
+#pragma comment(lib, "DirectXTK.lib")
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -29,6 +31,7 @@ private:
 	void CreateTriangle();
 	void CreateShadersAndInputLayout();
 	bool LoadFBXModel(const std::string& path);
+	void LoadTexture(const std::wstring& path);
 
 private:
 	UINT mWidth = 1280;
@@ -47,6 +50,9 @@ private:
 	ComPtr<ID3D11VertexShader> mVS;
 	ComPtr<ID3D11PixelShader> mPS;
 	ComPtr<ID3D11InputLayout> mInputLayout;
+
+	ComPtr<ID3D11ShaderResourceView> mTextureSRV;
+	ComPtr<ID3D11SamplerState> mSamplerState;
 
 	struct Vertex 
 	{ 

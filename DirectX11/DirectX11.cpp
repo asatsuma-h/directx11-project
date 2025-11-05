@@ -53,6 +53,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow)
         else
         {
             t += 0.01f;
+
             gApp.Render(t);
         }
     }

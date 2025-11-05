@@ -1,6 +1,6 @@
-#include "App.h"
+ï»¿#include "App.h"
 #include <d3dcompiler.h>
-#include <fbxsdk.h>      // FBX SDKƒƒCƒ“ƒwƒbƒ_[
+#include <fbxsdk.h>      // FBX SDKãƒ¡ã‚¤ãƒ³ãƒ˜ãƒƒãƒ€ãƒ¼
 #include <vector>
 #include <string>
 #include <iostream>
@@ -9,7 +9,7 @@ bool D3DApp::Initialize(HWND hWnd, UINT width, UINT height)
     mWidth = width;
     mHeight = height;
 
-    // ƒfƒoƒCƒXEƒXƒƒbƒvƒ`ƒF[ƒ“ì¬
+    // ãƒ‡ãƒã‚¤ã‚¹ãƒ»ã‚¹ãƒ¯ãƒƒãƒ—ãƒã‚§ãƒ¼ãƒ³ä½œæˆ
     DXGI_SWAP_CHAIN_DESC scd{};
     scd.BufferDesc.Width = width;
     scd.BufferDesc.Height = height;
@@ -30,20 +30,21 @@ bool D3DApp::Initialize(HWND hWnd, UINT width, UINT height)
     CreateRenderTargetAndDepth(width, height);
     //CreateTriangle();
     LoadFBXModel("Assets/model.fbx");
+    LoadTexture(L"Assets/MainTexture.png");
     CreateShadersAndInputLayout();
 
-    // ’è”ƒoƒbƒtƒ@ì¬
+    // å®šæ•°ãƒãƒƒãƒ•ã‚¡ä½œæˆ
     D3D11_BUFFER_DESC cbd{};
     cbd.ByteWidth = sizeof(ConstantBufferData);
     cbd.Usage = D3D11_USAGE_DEFAULT;
     cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     mDevice->CreateBuffer(&cbd, nullptr, mConstantBuffer.GetAddressOf());
 
-    // [“xƒXƒeƒ“ƒVƒ‹ƒXƒe[ƒgì¬
+    // æ·±åº¦ã‚¹ãƒ†ãƒ³ã‚·ãƒ«ã‚¹ãƒ†ãƒ¼ãƒˆä½œæˆ
     D3D11_DEPTH_STENCIL_DESC dsDesc{};
-    dsDesc.DepthEnable = TRUE;                              // [“xƒeƒXƒgON
-    dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;     // [“x‘‚«‚İON
-    dsDesc.DepthFunc = D3D11_COMPARISON_LESS;               // Z‚ª¬‚³‚¢(ƒJƒƒ‰‚É‹ß‚¢)•û‚ğÌ—p
+    dsDesc.DepthEnable = TRUE;                              // æ·±åº¦ãƒ†ã‚¹ãƒˆON
+    dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;     // æ·±åº¦æ›¸ãè¾¼ã¿ON
+    dsDesc.DepthFunc = D3D11_COMPARISON_LESS;               // ZãŒå°ã•ã„(ã‚«ãƒ¡ãƒ©ã«è¿‘ã„)æ–¹ã‚’æ¡ç”¨
     mDevice->CreateDepthStencilState(&dsDesc, mDepthState.GetAddressOf());
     mContext->OMSetDepthStencilState(mDepthState.Get(), 1);
 
@@ -65,9 +66,9 @@ bool D3DApp::LoadFBXModel(const std::string& path)
 
     FbxScene* scene = FbxScene::Create(manager, "scene");
     importer->Import(scene);
-    importer->Destroy();
+    //importer->Destroy();
 
-    // Å‰‚ÌƒƒbƒVƒ…‚ğ’T‚·
+    // æœ€åˆã®ãƒ¡ãƒƒã‚·ãƒ¥ã‚’æ¢ã™
     FbxNode* root = scene->GetRootNode();
     if (!root) return false;
 
@@ -81,54 +82,87 @@ bool D3DApp::LoadFBXModel(const std::string& path)
     }
     if (!mesh) return false;
 
-    int vCount = mesh->GetControlPointsCount();
-    FbxVector4* ctrlPoints = mesh->GetControlPoints();
-
-    std::vector<Vertex> vertices(vCount);
-    for (int i = 0; i < vCount; i++) {
-        vertices[i].pos = {
-            (float)ctrlPoints[i][0],
-            (float)ctrlPoints[i][1],
-            (float)ctrlPoints[i][2]
-        };
-        vertices[i].normal = { 0, 0, 0 };
-        vertices[i].uv = { 0, 0 };
-    }
-
+    std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
+
     int polyCount = mesh->GetPolygonCount();
-    for (int p = 0; p < polyCount; p++) {
+    for (int p = 0; p < polyCount; p++)
+    {
         int polySize = mesh->GetPolygonSize(p);
-        for (int v = 0; v < polySize; v++) {
-            int idx = mesh->GetPolygonVertex(p, v);
-            indices.push_back(idx);
+
+        // 3è§’å½¢ã®å ´åˆã¯ãã®ã¾ã¾
+        if (polySize == 3)
+        {
+            for (int v = 0; v < 3; v++)
+            {
+                Vertex vert{};
+                int ctrlIdx = mesh->GetPolygonVertex(p, v);
+                FbxVector4 pos = mesh->GetControlPointAt(ctrlIdx);
+                vert.pos = { (float)pos[0], (float)pos[1], (float)pos[2] };
+
+                // æ³•ç·š
+                FbxVector4 normal;
+                mesh->GetPolygonVertexNormal(p, v, normal);
+                vert.normal = { (float)normal[0], (float)normal[1], (float)normal[2] };
+
+                // UV
+                FbxStringList uvNames;
+                mesh->GetUVSetNames(uvNames);
+                if (uvNames.GetCount() > 0)
+                {
+                    const char* uvName = uvNames[0];
+                    FbxVector2 uv;
+                    bool unmapped;
+                    if (mesh->GetPolygonVertexUV(p, v, uvName, uv, unmapped))
+                        vert.uv = { (float)uv[0], 1.0f - (float)uv[1] };
+                }
+
+                vertices.push_back(vert);
+                indices.push_back((uint32_t)vertices.size() - 1);
+            }
+        }
+        // 4è§’å½¢ä»¥ä¸Šï¼ˆä¾‹ï¼šç«‹æ–¹ä½“ã®é¢ï¼‰ã¯ä¸‰è§’å½¢åŒ–
+        else if (polySize >= 4)
+        {
+            // ä¾‹ï¼šå››è§’å½¢ã®å ´åˆ â†’ (0,1,2), (0,2,3)
+            for (int tri = 0; tri < polySize - 2; tri++)
+            {
+                int triIdx[3] = { 0, tri + 1, tri + 2 };
+
+                for (int v = 0; v < 3; v++)
+                {
+                    int realV = triIdx[v];
+                    Vertex vert{};
+
+                    int ctrlIdx = mesh->GetPolygonVertex(p, realV);
+                    FbxVector4 pos = mesh->GetControlPointAt(ctrlIdx);
+                    vert.pos = { (float)pos[0], (float)pos[1], (float)pos[2] };
+
+                    // æ³•ç·š
+                    FbxVector4 normal;
+                    mesh->GetPolygonVertexNormal(p, realV, normal);
+                    vert.normal = { (float)normal[0], (float)normal[1], (float)normal[2] };
+
+                    // UV
+                    FbxStringList uvNames;
+                    mesh->GetUVSetNames(uvNames);
+                    if (uvNames.GetCount() > 0)
+                    {
+                        const char* uvName = uvNames[0];
+                        FbxVector2 uv;
+                        bool unmapped;
+                        if (mesh->GetPolygonVertexUV(p, realV, uvName, uv, unmapped))
+                            vert.uv = { (float)uv[0], 1.0f - (float)uv[1] };
+                    }
+
+                    vertices.push_back(vert);
+                    indices.push_back((uint32_t)vertices.size() - 1);
+                }
+            }
         }
     }
 
-    // –@ü‚ÆUV‚ğæ“¾
-    if (mesh->GetElementNormalCount() > 0) {
-        FbxGeometryElementNormal* normalElem = mesh->GetElementNormal(0);
-        for (int i = 0; i < indices.size(); i++) {
-            int ctrlIdx = indices[i];
-            FbxVector4 n = (normalElem->GetMappingMode() == FbxGeometryElement::eByControlPoint)
-                ? normalElem->GetDirectArray().GetAt(ctrlIdx)
-                : normalElem->GetDirectArray().GetAt(i);
-            vertices[ctrlIdx].normal = { (float)n[0], (float)n[1], (float)n[2] };
-        }
-    }
-
-    if (mesh->GetElementUVCount() > 0) {
-        FbxGeometryElementUV* uvElem = mesh->GetElementUV(0);
-        for (int i = 0; i < indices.size(); i++) {
-            int ctrlIdx = indices[i];
-            FbxVector2 uv;
-            bool unmapped;
-            mesh->GetPolygonVertexUV(i / 3, i % 3, uvElem->GetName(), uv, unmapped);
-            vertices[ctrlIdx].uv = { (float)uv[0], 1.0f - (float)uv[1] };
-        }
-    }
-
-    // DirectXƒoƒbƒtƒ@ì¬
+    // DirectXãƒãƒƒãƒ•ã‚¡ä½œæˆ
     D3D11_BUFFER_DESC vbd{};
     vbd.ByteWidth = UINT(sizeof(Vertex) * vertices.size());
     vbd.Usage = D3D11_USAGE_DEFAULT;
@@ -147,6 +181,34 @@ bool D3DApp::LoadFBXModel(const std::string& path)
 
     manager->Destroy();
     return true;
+}
+
+void D3DApp::LoadTexture(const std::wstring& path)
+{
+    HRESULT hr = DirectX::CreateWICTextureFromFile(
+        mDevice.Get(),
+        mContext.Get(),
+        path.c_str(),
+        nullptr,
+        mTextureSRV.GetAddressOf()
+    );
+
+    if (FAILED(hr)) {
+        MessageBoxW(nullptr, L"ãƒ†ã‚¯ã‚¹ãƒãƒ£èª­ã¿è¾¼ã¿å¤±æ•—", L"Error", MB_OK);
+        return;
+    }
+
+    // ã‚µãƒ³ãƒ—ãƒ©ãƒ¼ï¼ˆè£œé–“è¨­å®šï¼‰
+    D3D11_SAMPLER_DESC samp{};
+    samp.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    samp.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    samp.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    samp.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    samp.ComparisonFunc = D3D11_COMPARISON_NEVER;
+    samp.MinLOD = 0;
+    samp.MaxLOD = D3D11_FLOAT32_MAX;
+
+    mDevice->CreateSamplerState(&samp, mSamplerState.GetAddressOf());
 }
 
 
@@ -181,12 +243,12 @@ void D3DApp::CreateRenderTargetAndDepth(UINT width, UINT height)
 void D3DApp::CreateTriangle()
 {
     Vertex vertices[] = {
-        {{ 0.0f,  0.5f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f}}, // Ô
-        {{ 0.5f, -0.5f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 1.f}}, // —Î
-        {{-0.5f, -0.5f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 0.f}}, // Â
+        {{ 0.0f,  0.5f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f}}, // èµ¤
+        {{ 0.5f, -0.5f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 1.f}}, // ç·‘
+        {{-0.5f, -0.5f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 0.f}}, // é’
     };
     uint16_t indices[] = {
-        0, 1, 2, // ‰œ
+        0, 1, 2, // å¥¥
     };
 
     D3D11_BUFFER_DESC vbd{};
@@ -239,7 +301,7 @@ void D3DApp::CreateShadersAndInputLayout()
          D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,
         D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0,
          D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
     mDevice->CreateInputLayout(layout, _countof(layout),
@@ -248,9 +310,10 @@ void D3DApp::CreateShadersAndInputLayout()
 }
 void D3DApp::Render(float time)
 {
-    // ’è”ƒoƒbƒtƒ@XVi‰ñ“]s—ñj
+    // å®šæ•°ãƒãƒƒãƒ•ã‚¡æ›´æ–°ï¼ˆå›è»¢è¡Œåˆ—ï¼‰
     ConstantBufferData cb{};
-    XMMATRIX world = XMMatrixRotationY(time);
+    XMMATRIX world = XMMatrixScaling(0.5f, 0.5f, 0.5f) * XMMatrixRotationY(time);
+
     XMVECTOR eye = XMVectorSet(0.0f, 0.0f, -2.0f, 0.0f);
     XMVECTOR at = XMVectorZero();
     XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
@@ -259,19 +322,23 @@ void D3DApp::Render(float time)
     cb.view = XMMatrixTranspose(XMMatrixLookAtLH(eye, at, up));
     cb.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(XMConvertToRadians(60.0f), (float)mWidth / mHeight, 0.1f, 10.0f));
 
-    // ƒ‰ƒCƒg‚Ì’è”ƒoƒbƒtƒ@XV
-    cb.lightDir = XMFLOAT3(0.0f, -1.0f, 1.0f);   // Î‚ß‘O‚©‚çÆ‚ç‚·Œõ
+    // ãƒ©ã‚¤ãƒˆã®å®šæ•°ãƒãƒƒãƒ•ã‚¡æ›´æ–°
+    cb.lightDir = XMFLOAT3(0.0f, -1.0f, 1.0f);   // æ–œã‚å‰ã‹ã‚‰ç…§ã‚‰ã™å…‰
     cb.lightColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 
-    // GPU‚Åî•ñ‚ğ‘—M
+    // ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ã¸ãƒ†ã‚¯ã‚¹ãƒãƒ£ã¨ã‚µãƒ³ãƒ—ãƒ©ãƒ¼ã‚’ã‚»ãƒƒãƒˆ
+    mContext->PSSetShaderResources(0, 1, mTextureSRV.GetAddressOf());
+    mContext->PSSetSamplers(0, 1, mSamplerState.GetAddressOf());
+
+    // GPUã§æƒ…å ±ã‚’é€ä¿¡
     mContext->UpdateSubresource(mConstantBuffer.Get(), 0, nullptr, &cb, 0, 0);
 
-    // ƒNƒŠƒA
+    // ã‚¯ãƒªã‚¢
     const float clear[4] = { 0.1f, 0.1f, 0.2f, 1.0f };
     mContext->ClearRenderTargetView(mRTV.Get(), clear);
     mContext->ClearDepthStencilView(mDSV.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
 
-    // ƒpƒCƒvƒ‰ƒCƒ“İ’è
+    // ãƒ‘ã‚¤ãƒ—ãƒ©ã‚¤ãƒ³è¨­å®š
     UINT stride = sizeof(Vertex), offset = 0;
     mContext->IASetVertexBuffers(0, 1, mVB.GetAddressOf(), &stride, &offset);
     mContext->IASetIndexBuffer(mIB.Get(), DXGI_FORMAT_R16_UINT, 0);
@@ -283,8 +350,9 @@ void D3DApp::Render(float time)
     mContext->PSSetShader(mPS.Get(), nullptr, 0);
     mContext->PSSetConstantBuffers(0, 1, mConstantBuffer.GetAddressOf());
 
-    // •`‰æ
-    mContext->DrawIndexed(3, 0, 0);
+    // æç”»
+    mContext->IASetIndexBuffer(mIB.Get(), DXGI_FORMAT_R32_UINT, 0);
+    mContext->DrawIndexed(mIndexCount, 0, 0);
     mSwapChain->Present(1, 0);
 }
 
@@ -297,16 +365,16 @@ void D3DApp::OnResize(UINT width, UINT height)
     mRTV.Reset();
     mDSV.Reset();
 
-    // ƒXƒƒbƒvƒ`ƒF[ƒ“‚ÌƒTƒCƒY•ÏX
+    // ã‚¹ãƒ¯ãƒƒãƒ—ãƒã‚§ãƒ¼ãƒ³ã®ã‚µã‚¤ã‚ºå¤‰æ›´
     mSwapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
 
-    // V‚µ‚¢ƒTƒCƒY‚ÅRTV / DSV Ä¶¬
+    // æ–°ã—ã„ã‚µã‚¤ã‚ºã§RTV / DSV å†ç”Ÿæˆ
     CreateRenderTargetAndDepth(width, height);
 }
 
 void D3DApp::Cleanup()
 {
-    // ‡”Ô‚Íd—viContext ¨ SwapChain ¨ Devicej
+    // é †ç•ªã¯é‡è¦ï¼ˆContext â†’ SwapChain â†’ Deviceï¼‰
     if (mContext) {
         mContext->ClearState();
         mContext->Flush();
