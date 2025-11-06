@@ -53,24 +53,37 @@ bool D3DApp::Initialize(HWND hWnd, UINT width, UINT height)
 
 bool D3DApp::LoadFBXModel(const std::string& path)
 {
+    // FBXマネージャ生成
     FbxManager* manager = FbxManager::Create();
     FbxIOSettings* ios = FbxIOSettings::Create(manager, IOSROOT);
     manager->SetIOSettings(ios);
 
+    // インポーター生成
     FbxImporter* importer = FbxImporter::Create(manager, "");
     if (!importer->Initialize(path.c_str(), -1, manager->GetIOSettings()))
     {
         MessageBoxA(nullptr, importer->GetStatus().GetErrorString(), "FBX Import Error", MB_OK);
+        importer->Destroy();
+        manager->Destroy();
         return false;
     }
 
+    // シーン生成・読み込み
     FbxScene* scene = FbxScene::Create(manager, "scene");
     importer->Import(scene);
-    //importer->Destroy();
+    importer->Destroy();
+
+    // 三角形化
+    FbxGeometryConverter converter(manager);
+    converter.Triangulate(scene, true);
 
     // 最初のメッシュを探す
     FbxNode* root = scene->GetRootNode();
-    if (!root) return false;
+    if (!root)
+    {
+        manager->Destroy();
+        return false;
+    }
 
     FbxMesh* mesh = nullptr;
     for (int i = 0; i < root->GetChildCount(); i++) {
@@ -80,105 +93,83 @@ bool D3DApp::LoadFBXModel(const std::string& path)
             break;
         }
     }
-    if (!mesh) return false;
+    if (!mesh)
+    {
+        manager->Destroy();
+        return false;
+    }
 
+    // 頂点データ格納
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
 
     int polyCount = mesh->GetPolygonCount();
     for (int p = 0; p < polyCount; p++)
     {
-        int polySize = mesh->GetPolygonSize(p);
-
-        // 3角形の場合はそのまま
-        if (polySize == 3)
+        // 常に三角形
+        for (int v = 0; v < 3; v++)
         {
-            for (int v = 0; v < 3; v++)
+            Vertex vert{};
+
+            int ctrlIdx = mesh->GetPolygonVertex(p, v);
+
+            // 位置
+            FbxVector4 pos = mesh->GetControlPointAt(ctrlIdx);
+            vert.pos = { (float)pos[0], (float)pos[1], (float)pos[2] };
+
+            // 法線
+            FbxVector4 normal;
+            mesh->GetPolygonVertexNormal(p, v, normal);
+            vert.normal = { (float)normal[0], (float)normal[1], (float)normal[2] };
+
+            // UV
+            FbxStringList uvNames;
+            mesh->GetUVSetNames(uvNames);
+            if (uvNames.GetCount() > 0)
             {
-                Vertex vert{};
-                int ctrlIdx = mesh->GetPolygonVertex(p, v);
-                FbxVector4 pos = mesh->GetControlPointAt(ctrlIdx);
-                vert.pos = { (float)pos[0], (float)pos[1], (float)pos[2] };
-
-                // 法線
-                FbxVector4 normal;
-                mesh->GetPolygonVertexNormal(p, v, normal);
-                vert.normal = { (float)normal[0], (float)normal[1], (float)normal[2] };
-
-                // UV
-                FbxStringList uvNames;
-                mesh->GetUVSetNames(uvNames);
-                if (uvNames.GetCount() > 0)
+                const char* uvName = uvNames[0];
+                FbxVector2 uv;
+                bool unmapped;
+                if (mesh->GetPolygonVertexUV(p, v, uvName, uv, unmapped))
                 {
-                    const char* uvName = uvNames[0];
-                    FbxVector2 uv;
-                    bool unmapped;
-                    if (mesh->GetPolygonVertexUV(p, v, uvName, uv, unmapped))
-                        vert.uv = { (float)uv[0], 1.0f - (float)uv[1] };
-                }
-
-                vertices.push_back(vert);
-                indices.push_back((uint32_t)vertices.size() - 1);
-            }
-        }
-        // 4角形以上（例：立方体の面）は三角形化
-        else if (polySize >= 4)
-        {
-            // 例：四角形の場合 → (0,1,2), (0,2,3)
-            for (int tri = 0; tri < polySize - 2; tri++)
-            {
-                int triIdx[3] = { 0, tri + 1, tri + 2 };
-
-                for (int v = 0; v < 3; v++)
-                {
-                    int realV = triIdx[v];
-                    Vertex vert{};
-
-                    int ctrlIdx = mesh->GetPolygonVertex(p, realV);
-                    FbxVector4 pos = mesh->GetControlPointAt(ctrlIdx);
-                    vert.pos = { (float)pos[0], (float)pos[1], (float)pos[2] };
-
-                    // 法線
-                    FbxVector4 normal;
-                    mesh->GetPolygonVertexNormal(p, realV, normal);
-                    vert.normal = { (float)normal[0], (float)normal[1], (float)normal[2] };
-
-                    // UV
-                    FbxStringList uvNames;
-                    mesh->GetUVSetNames(uvNames);
-                    if (uvNames.GetCount() > 0)
-                    {
-                        const char* uvName = uvNames[0];
-                        FbxVector2 uv;
-                        bool unmapped;
-                        if (mesh->GetPolygonVertexUV(p, realV, uvName, uv, unmapped))
-                            vert.uv = { (float)uv[0], 1.0f - (float)uv[1] };
-                    }
-
-                    vertices.push_back(vert);
-                    indices.push_back((uint32_t)vertices.size() - 1);
+                    vert.uv = { (float)uv[0], 1.0f - (float)uv[1] };
                 }
             }
+            vertices.push_back(vert);
+            indices.push_back(static_cast<uint32_t>(vertices.size() - 1));
         }
     }
 
-    // DirectXバッファ作成
+    // --- DirectX バッファ作成 ---
     D3D11_BUFFER_DESC vbd{};
     vbd.ByteWidth = UINT(sizeof(Vertex) * vertices.size());
     vbd.Usage = D3D11_USAGE_DEFAULT;
     vbd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
     D3D11_SUBRESOURCE_DATA vinit{ vertices.data() };
-    mDevice->CreateBuffer(&vbd, &vinit, mVB.GetAddressOf());
+    HRESULT hr = mDevice->CreateBuffer(&vbd, &vinit, mVB.GetAddressOf());
+    if (FAILED(hr))
+    {
+        MessageBoxW(nullptr, L"頂点バッファ作成失敗", L"Error", MB_OK);
+        manager->Destroy();
+        return false;
+    }
 
     D3D11_BUFFER_DESC ibd{};
     ibd.ByteWidth = UINT(sizeof(uint32_t) * indices.size());
     ibd.Usage = D3D11_USAGE_DEFAULT;
     ibd.BindFlags = D3D11_BIND_INDEX_BUFFER;
     D3D11_SUBRESOURCE_DATA iinit{ indices.data() };
-    mDevice->CreateBuffer(&ibd, &iinit, mIB.GetAddressOf());
+    hr = mDevice->CreateBuffer(&ibd, &iinit, mIB.GetAddressOf());
+    if (FAILED(hr))
+    {
+        MessageBoxW(nullptr, L"インデックスバッファ作成失敗", L"Error", MB_OK);
+        manager->Destroy();
+        return false;
+    }
 
     mIndexCount = static_cast<UINT>(indices.size());
 
+    // --- 後処理 ---
     manager->Destroy();
     return true;
 }
