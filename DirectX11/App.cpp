@@ -301,49 +301,49 @@ void D3DApp::CreateShadersAndInputLayout()
 }
 void D3DApp::Render(float time)
 {
-    // 定数バッファ更新（回転行列）
     ConstantBufferData cb{};
-    XMMATRIX world = XMMatrixScaling(0.5f, 0.5f, 0.5f) * XMMatrixRotationY(time);
+    XMMATRIX view = mCamera.GetViewMatrix();
+    XMMATRIX proj = XMMatrixPerspectiveFovLH(XMConvertToRadians(60.0f), (float)mWidth / mHeight, 0.1f, 100.0f);
 
-    XMVECTOR eye = XMVectorSet(0.0f, 0.0f, -2.0f, 0.0f);
-    XMVECTOR at = XMVectorZero();
-    XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    // 光源設定
+    cb.lightDir = XMFLOAT3(0.0f, -1.0f, 1.0f);
+    cb.lightColor = XMFLOAT4(1, 1, 1, 1);
+    cb.view = XMMatrixTranspose(view);
+    cb.proj = XMMatrixTranspose(proj);
 
-    cb.world = XMMatrixTranspose(world);
-    cb.view = XMMatrixTranspose(XMMatrixLookAtLH(eye, at, up));
-    cb.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(XMConvertToRadians(60.0f), (float)mWidth / mHeight, 0.1f, 10.0f));
-
-    // ライトの定数バッファ更新
-    cb.lightDir = XMFLOAT3(0.0f, -1.0f, 1.0f);   // 斜め前から照らす光
-    cb.lightColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-
-    // シェーダーへテクスチャとサンプラーをセット
-    mContext->PSSetShaderResources(0, 1, mTextureSRV.GetAddressOf());
-    mContext->PSSetSamplers(0, 1, mSamplerState.GetAddressOf());
-
-    // GPUで情報を送信
-    mContext->UpdateSubresource(mConstantBuffer.Get(), 0, nullptr, &cb, 0, 0);
-
-    // クリア
-    const float clear[4] = { 0.1f, 0.1f, 0.2f, 1.0f };
+    const float clear[4] = { 0.05f, 0.05f, 0.1f, 1.0f };
     mContext->ClearRenderTargetView(mRTV.Get(), clear);
     mContext->ClearDepthStencilView(mDSV.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
 
     // パイプライン設定
     UINT stride = sizeof(Vertex), offset = 0;
     mContext->IASetVertexBuffers(0, 1, mVB.GetAddressOf(), &stride, &offset);
-    mContext->IASetIndexBuffer(mIB.Get(), DXGI_FORMAT_R16_UINT, 0);
+    mContext->IASetIndexBuffer(mIB.Get(), DXGI_FORMAT_R32_UINT, 0);
     mContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     mContext->IASetInputLayout(mInputLayout.Get());
-
     mContext->VSSetShader(mVS.Get(), nullptr, 0);
-    mContext->VSSetConstantBuffers(0, 1, mConstantBuffer.GetAddressOf());
     mContext->PSSetShader(mPS.Get(), nullptr, 0);
+    mContext->VSSetConstantBuffers(0, 1, mConstantBuffer.GetAddressOf());
     mContext->PSSetConstantBuffers(0, 1, mConstantBuffer.GetAddressOf());
+    mContext->PSSetShaderResources(0, 1, mTextureSRV.GetAddressOf());
+    mContext->PSSetSamplers(0, 1, mSamplerState.GetAddressOf());
 
-    // 描画
-    mContext->IASetIndexBuffer(mIB.Get(), DXGI_FORMAT_R32_UINT, 0);
+    // --- モデル1 ---
+    XMMATRIX world1 = XMMatrixScaling(0.5f, 0.5f, 0.5f)
+        * XMMatrixTranslation(-1.0f, 0.0f, 0.0f)
+        * XMMatrixRotationY(time);
+    cb.world = XMMatrixTranspose(world1);
+    mContext->UpdateSubresource(mConstantBuffer.Get(), 0, nullptr, &cb, 0, 0);
     mContext->DrawIndexed(mIndexCount, 0, 0);
+
+    // --- モデル2 ---
+    XMMATRIX world2 = XMMatrixScaling(0.5f, 0.5f, 0.5f)
+        * XMMatrixTranslation(1.0f, 0.0f, 0.0f)
+        * XMMatrixRotationY(-time * 0.5f);
+    cb.world = XMMatrixTranspose(world2);
+    mContext->UpdateSubresource(mConstantBuffer.Get(), 0, nullptr, &cb, 0, 0);
+    mContext->DrawIndexed(mIndexCount, 0, 0);
+
     mSwapChain->Present(1, 0);
 }
 

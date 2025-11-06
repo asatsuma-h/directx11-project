@@ -132,6 +132,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="App.h" />
+    <ClInclude Include="Camera.h" />
     <ClInclude Include="DirectX11.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="Resource.h" />

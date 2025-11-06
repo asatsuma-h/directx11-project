@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include "Camera.h"
 
 #pragma comment(lib, "d3d11.lib")       // D3D11 の本体
 #pragma comment(lib, "dxgi.lib")        // スワップチェーンなど
@@ -32,6 +33,9 @@ private:
 	void CreateShadersAndInputLayout();
 	bool LoadFBXModel(const std::string& path);
 	void LoadTexture(const std::wstring& path);
+
+public:
+	Camera mCamera;
 
 private:
 	UINT mWidth = 1280;
