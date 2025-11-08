@@ -45,6 +45,8 @@ public:
             XMLoadFloat3(&mUp));
     }
 
+    XMFLOAT3 GetPosition() { return mPosition; }
+
 private:
     XMFLOAT3 mPosition;
     XMFLOAT3 mTarget;

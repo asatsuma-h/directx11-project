@@ -302,14 +302,24 @@ void D3DApp::CreateShadersAndInputLayout()
 void D3DApp::Render(float time)
 {
     ConstantBufferData cb{};
+
+    XMVECTOR eye = XMVectorSet(0.0f, 0.7f, -3.0f, 0.0f);
+    XMVECTOR at = XMVectorSet(0.0f, 0.2f, 0.0f, 0.0f);
+    XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+
     XMMATRIX view = mCamera.GetViewMatrix();
-    XMMATRIX proj = XMMatrixPerspectiveFovLH(XMConvertToRadians(60.0f), (float)mWidth / mHeight, 0.1f, 100.0f);
+    XMMATRIX proj = XMMatrixPerspectiveFovLH(XMConvertToRadians(60.0f), (float)mWidth / (float)mHeight, 0.1f, 100.0f);
 
     // 光源設定
-    cb.lightDir = XMFLOAT3(0.0f, -1.0f, 1.0f);
+    cb.lightDir = XMFLOAT3(0.2f, -1.0f, 0.3f); // 方向（正規化でなくてもPSで正規化）
+    cb.lightIntensity = 1.0f;
     cb.lightColor = XMFLOAT4(1, 1, 1, 1);
+    cb.ambientColor = XMFLOAT4(0.06f, 0.06f, 0.07f, 1.0f); // ほんのり青み
     cb.view = XMMatrixTranspose(view);
     cb.proj = XMMatrixTranspose(proj);
+
+    // カメラ位置（eye を入れる）
+    cb.camPos = mCamera.GetPosition();
 
     const float clear[4] = { 0.05f, 0.05f, 0.1f, 1.0f };
     mContext->ClearRenderTargetView(mRTV.Get(), clear);
@@ -327,6 +337,11 @@ void D3DApp::Render(float time)
     mContext->PSSetConstantBuffers(0, 1, mConstantBuffer.GetAddressOf());
     mContext->PSSetShaderResources(0, 1, mTextureSRV.GetAddressOf());
     mContext->PSSetSamplers(0, 1, mSamplerState.GetAddressOf());
+
+    // マテリアル
+    cb.materialColor = XMFLOAT4(1, 1, 1, 1); // アルベド乗算（白＝無加工）
+    cb.specPower = 64.0f;                // 鏡面の鋭さ
+    cb.useTexture = 1u;                   // テクスチャを使う
 
     // --- モデル1 ---
     XMMATRIX world1 = XMMatrixScaling(0.5f, 0.5f, 0.5f)

@@ -81,7 +81,7 @@ float4 PSMain(VSOut i) : SV_TARGET
     float4 albedo = materialColor;
     if (useTexture != 0)
     {
-        float texColor = tex0.Sample(samp0, i.uv);
+        float4 texColor = tex0.Sample(samp0, i.uv);
         albedo *= texColor;
     }
     

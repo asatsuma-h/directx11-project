@@ -70,9 +70,19 @@ private:
 		XMMATRIX world;
 		XMMATRIX view;
 		XMMATRIX proj;
-		XMFLOAT3 lightDir;		// 光の方向
-		float pad1;				// 16バイト境界用パディング
-		XMFLOAT4 lightColor;	// 光の色
+
+		XMFLOAT3 lightDir;
+		float             lightIntensity;
+		XMFLOAT4 lightColor;
+		XMFLOAT4 ambientColor;
+
+		XMFLOAT3 camPos;
+		float             specPower;
+
+		XMFLOAT4 materialColor;
+
+		UINT              useTexture;
+		XMFLOAT3 _pad; // 16byte アライン合わせ
 	};
 
 	UINT mIndexCount = 0;		// FBX読み込み後のインデックス数
