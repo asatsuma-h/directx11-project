@@ -2,12 +2,18 @@
 #include <Windows.h>
 #include <d3d11.h>
 #include <DirectXMath.h>
+#include <DirectXTK/WICTextureLoader.h>
 #include <wrl.h>
 #include <cstdint>
+#include <string>
+#include <vector>
+#include "Camera.h"
 
 #pragma comment(lib, "d3d11.lib")       // D3D11 の本体
 #pragma comment(lib, "dxgi.lib")        // スワップチェーンなど
 #pragma comment(lib, "d3dcompiler.lib") // シェーダーコンパイル用
+#pragma comment(lib, "libfbxsdk.lib")	// FBX SDK
+#pragma comment(lib, "DirectXTK.lib")
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -25,6 +31,11 @@ private:
 	void CreateRenderTargetAndDepth(UINT width, UINT height);
 	void CreateTriangle();
 	void CreateShadersAndInputLayout();
+	bool LoadFBXModel(const std::string& path);
+	void LoadTexture(const std::wstring& path);
+
+public:
+	Camera mCamera;
 
 private:
 	UINT mWidth = 1280;
@@ -44,11 +55,14 @@ private:
 	ComPtr<ID3D11PixelShader> mPS;
 	ComPtr<ID3D11InputLayout> mInputLayout;
 
+	ComPtr<ID3D11ShaderResourceView> mTextureSRV;
+	ComPtr<ID3D11SamplerState> mSamplerState;
+
 	struct Vertex 
 	{ 
 		XMFLOAT3 pos; 
 		XMFLOAT3 normal;
-		XMFLOAT3 color;
+		XMFLOAT2 uv;
 	};
 
 	struct ConstantBufferData
@@ -56,8 +70,20 @@ private:
 		XMMATRIX world;
 		XMMATRIX view;
 		XMMATRIX proj;
-		XMFLOAT3 lightDir;		// 光の方向
-		float pad1;				// 16バイト境界用パディング
-		XMFLOAT4 lightColor;	// 光の色
+
+		XMFLOAT3 lightDir;
+		float             lightIntensity;
+		XMFLOAT4 lightColor;
+		XMFLOAT4 ambientColor;
+
+		XMFLOAT3 camPos;
+		float             specPower;
+
+		XMFLOAT4 materialColor;
+
+		UINT              useTexture;
+		XMFLOAT3 _pad; // 16byte アライン合わせ
 	};
+
+	UINT mIndexCount = 0;		// FBX読み込み後のインデックス数
 };

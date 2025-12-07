@@ -1,12 +1,15 @@
-#include "App.h"
+Ôªø#include "App.h"
 #include <d3dcompiler.h>
-
+#include <fbxsdk.h>      // FBX SDK„É°„Ç§„É≥„Éò„ÉÉ„ÉÄ„Éº
+#include <vector>
+#include <string>
+#include <iostream>
 bool D3DApp::Initialize(HWND hWnd, UINT width, UINT height)
 {
     mWidth = width;
     mHeight = height;
 
-    // ÉfÉoÉCÉXÅEÉXÉèÉbÉvÉ`ÉFÅ[ÉìçÏê¨
+    // „Éá„Éê„Ç§„Çπ„Éª„Çπ„ÉØ„ÉÉ„Éó„ÉÅ„Çß„Éº„É≥‰ΩúÊàê
     DXGI_SWAP_CHAIN_DESC scd{};
     scd.BufferDesc.Width = width;
     scd.BufferDesc.Height = height;
@@ -25,26 +28,180 @@ bool D3DApp::Initialize(HWND hWnd, UINT width, UINT height)
     if (FAILED(hr)) return false;
 
     CreateRenderTargetAndDepth(width, height);
-    CreateTriangle();
+    //CreateTriangle();
+    LoadFBXModel("Assets/model.fbx");
+    LoadTexture(L"Assets/MainTexture.png");
     CreateShadersAndInputLayout();
 
-    // íËêîÉoÉbÉtÉ@çÏê¨
+    // ÂÆöÊï∞„Éê„ÉÉ„Éï„Ç°‰ΩúÊàê
     D3D11_BUFFER_DESC cbd{};
     cbd.ByteWidth = sizeof(ConstantBufferData);
     cbd.Usage = D3D11_USAGE_DEFAULT;
     cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     mDevice->CreateBuffer(&cbd, nullptr, mConstantBuffer.GetAddressOf());
 
-    // ê[ìxÉXÉeÉìÉVÉãÉXÉeÅ[ÉgçÏê¨
+    // Ê∑±Â∫¶„Çπ„ÉÜ„É≥„Ç∑„É´„Çπ„ÉÜ„Éº„Éà‰ΩúÊàê
     D3D11_DEPTH_STENCIL_DESC dsDesc{};
-    dsDesc.DepthEnable = TRUE;                              // ê[ìxÉeÉXÉgON
-    dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;     // ê[ìxèëÇ´çûÇ›ON
-    dsDesc.DepthFunc = D3D11_COMPARISON_LESS;               // ZÇ™è¨Ç≥Ç¢(ÉJÉÅÉâÇ…ãﬂÇ¢)ï˚ÇçÃóp
+    dsDesc.DepthEnable = TRUE;                              // Ê∑±Â∫¶„ÉÜ„Çπ„ÉàON
+    dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;     // Ê∑±Â∫¶Êõ∏„ÅçËæº„ÅøON
+    dsDesc.DepthFunc = D3D11_COMPARISON_LESS;               // Z„ÅåÂ∞è„Åï„ÅÑ(„Ç´„É°„É©„Å´Ëøë„ÅÑ)Êñπ„ÇíÊé°Áî®
     mDevice->CreateDepthStencilState(&dsDesc, mDepthState.GetAddressOf());
     mContext->OMSetDepthStencilState(mDepthState.Get(), 1);
 
     return true;
 }
+
+bool D3DApp::LoadFBXModel(const std::string& path)
+{
+    // FBX„Éû„Éç„Éº„Ç∏„É£ÁîüÊàê
+    FbxManager* manager = FbxManager::Create();
+    FbxIOSettings* ios = FbxIOSettings::Create(manager, IOSROOT);
+    manager->SetIOSettings(ios);
+
+    // „Ç§„É≥„Éù„Éº„Çø„ÉºÁîüÊàê
+    FbxImporter* importer = FbxImporter::Create(manager, "");
+    if (!importer->Initialize(path.c_str(), -1, manager->GetIOSettings()))
+    {
+        MessageBoxA(nullptr, importer->GetStatus().GetErrorString(), "FBX Import Error", MB_OK);
+        importer->Destroy();
+        manager->Destroy();
+        return false;
+    }
+
+    // „Ç∑„Éº„É≥ÁîüÊàê„ÉªË™≠„ÅøËæº„Åø
+    FbxScene* scene = FbxScene::Create(manager, "scene");
+    importer->Import(scene);
+    importer->Destroy();
+
+    // ‰∏âËßíÂΩ¢Âåñ
+    FbxGeometryConverter converter(manager);
+    converter.Triangulate(scene, true);
+
+    // ÊúÄÂàù„ÅÆ„É°„ÉÉ„Ç∑„É•„ÇíÊé¢„Åô
+    FbxNode* root = scene->GetRootNode();
+    if (!root)
+    {
+        manager->Destroy();
+        return false;
+    }
+
+    FbxMesh* mesh = nullptr;
+    for (int i = 0; i < root->GetChildCount(); i++) {
+        FbxNode* node = root->GetChild(i);
+        if (node->GetMesh()) {
+            mesh = node->GetMesh();
+            break;
+        }
+    }
+    if (!mesh)
+    {
+        manager->Destroy();
+        return false;
+    }
+
+    // È†ÇÁÇπ„Éá„Éº„ÇøÊ†ºÁ¥ç
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
+
+    int polyCount = mesh->GetPolygonCount();
+    for (int p = 0; p < polyCount; p++)
+    {
+        // Â∏∏„Å´‰∏âËßíÂΩ¢
+        for (int v = 0; v < 3; v++)
+        {
+            Vertex vert{};
+
+            int ctrlIdx = mesh->GetPolygonVertex(p, v);
+
+            // ‰ΩçÁΩÆ
+            FbxVector4 pos = mesh->GetControlPointAt(ctrlIdx);
+            vert.pos = { (float)pos[0], (float)pos[1], (float)pos[2] };
+
+            // Ê≥ïÁ∑ö
+            FbxVector4 normal;
+            mesh->GetPolygonVertexNormal(p, v, normal);
+            vert.normal = { (float)normal[0], (float)normal[1], (float)normal[2] };
+
+            // UV
+            FbxStringList uvNames;
+            mesh->GetUVSetNames(uvNames);
+            if (uvNames.GetCount() > 0)
+            {
+                const char* uvName = uvNames[0];
+                FbxVector2 uv;
+                bool unmapped;
+                if (mesh->GetPolygonVertexUV(p, v, uvName, uv, unmapped))
+                {
+                    vert.uv = { (float)uv[0], 1.0f - (float)uv[1] };
+                }
+            }
+            vertices.push_back(vert);
+            indices.push_back(static_cast<uint32_t>(vertices.size() - 1));
+        }
+    }
+
+    // --- DirectX „Éê„ÉÉ„Éï„Ç°‰ΩúÊàê ---
+    D3D11_BUFFER_DESC vbd{};
+    vbd.ByteWidth = UINT(sizeof(Vertex) * vertices.size());
+    vbd.Usage = D3D11_USAGE_DEFAULT;
+    vbd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA vinit{ vertices.data() };
+    HRESULT hr = mDevice->CreateBuffer(&vbd, &vinit, mVB.GetAddressOf());
+    if (FAILED(hr))
+    {
+        MessageBoxW(nullptr, L"È†ÇÁÇπ„Éê„ÉÉ„Éï„Ç°‰ΩúÊàêÂ§±Êïó", L"Error", MB_OK);
+        manager->Destroy();
+        return false;
+    }
+
+    D3D11_BUFFER_DESC ibd{};
+    ibd.ByteWidth = UINT(sizeof(uint32_t) * indices.size());
+    ibd.Usage = D3D11_USAGE_DEFAULT;
+    ibd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA iinit{ indices.data() };
+    hr = mDevice->CreateBuffer(&ibd, &iinit, mIB.GetAddressOf());
+    if (FAILED(hr))
+    {
+        MessageBoxW(nullptr, L"„Ç§„É≥„Éá„ÉÉ„ÇØ„Çπ„Éê„ÉÉ„Éï„Ç°‰ΩúÊàêÂ§±Êïó", L"Error", MB_OK);
+        manager->Destroy();
+        return false;
+    }
+
+    mIndexCount = static_cast<UINT>(indices.size());
+
+    // --- ÂæåÂá¶ÁêÜ ---
+    manager->Destroy();
+    return true;
+}
+
+void D3DApp::LoadTexture(const std::wstring& path)
+{
+    HRESULT hr = DirectX::CreateWICTextureFromFile(
+        mDevice.Get(),
+        mContext.Get(),
+        path.c_str(),
+        nullptr,
+        mTextureSRV.GetAddressOf()
+    );
+
+    if (FAILED(hr)) {
+        MessageBoxW(nullptr, L"„ÉÜ„ÇØ„Çπ„ÉÅ„É£Ë™≠„ÅøËæº„ÅøÂ§±Êïó", L"Error", MB_OK);
+        return;
+    }
+
+    // „Çµ„É≥„Éó„É©„ÉºÔºàË£úÈñìË®≠ÂÆöÔºâ
+    D3D11_SAMPLER_DESC samp{};
+    samp.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    samp.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    samp.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    samp.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    samp.ComparisonFunc = D3D11_COMPARISON_NEVER;
+    samp.MinLOD = 0;
+    samp.MaxLOD = D3D11_FLOAT32_MAX;
+
+    mDevice->CreateSamplerState(&samp, mSamplerState.GetAddressOf());
+}
+
 
 void D3DApp::CreateRenderTargetAndDepth(UINT width, UINT height)
 {
@@ -77,12 +234,12 @@ void D3DApp::CreateRenderTargetAndDepth(UINT width, UINT height)
 void D3DApp::CreateTriangle()
 {
     Vertex vertices[] = {
-        {{ 0.0f,  0.5f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f, 0.f}}, // ê‘
-        {{ 0.5f, -0.5f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 1.f, 0.f}}, // óŒ
-        {{-0.5f, -0.5f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 0.f, 1.f}}, // ê¬
+        {{ 0.0f,  0.5f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f}}, // Ëµ§
+        {{ 0.5f, -0.5f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 1.f}}, // Á∑ë
+        {{-0.5f, -0.5f, 0.f}, {0.f, 0.f, -1.f}, {0.f, 0.f}}, // Èùí
     };
     uint16_t indices[] = {
-        0, 1, 2, // âú
+        0, 1, 2, // Â••
     };
 
     D3D11_BUFFER_DESC vbd{};
@@ -135,7 +292,7 @@ void D3DApp::CreateShadersAndInputLayout()
          D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,
         D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0,
          D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
     mDevice->CreateInputLayout(layout, _countof(layout),
@@ -144,43 +301,64 @@ void D3DApp::CreateShadersAndInputLayout()
 }
 void D3DApp::Render(float time)
 {
-    // íËêîÉoÉbÉtÉ@çXêVÅiâÒì]çsóÒÅj
     ConstantBufferData cb{};
-    XMMATRIX world = XMMatrixRotationY(time);
-    XMVECTOR eye = XMVectorSet(0.0f, 0.0f, -2.0f, 0.0f);
-    XMVECTOR at = XMVectorZero();
+
+    XMVECTOR eye = XMVectorSet(0.0f, 0.7f, -3.0f, 0.0f);
+    XMVECTOR at = XMVectorSet(0.0f, 0.2f, 0.0f, 0.0f);
     XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
 
-    cb.world = XMMatrixTranspose(world);
-    cb.view = XMMatrixTranspose(XMMatrixLookAtLH(eye, at, up));
-    cb.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(XMConvertToRadians(60.0f), (float)mWidth / mHeight, 0.1f, 10.0f));
+    XMMATRIX view = mCamera.GetViewMatrix();
+    XMMATRIX proj = XMMatrixPerspectiveFovLH(XMConvertToRadians(60.0f), (float)mWidth / (float)mHeight, 0.1f, 100.0f);
 
-    // ÉâÉCÉgÇÃíËêîÉoÉbÉtÉ@çXêV
-    cb.lightDir = XMFLOAT3(0.0f, -1.0f, 1.0f);   // éŒÇﬂëOÇ©ÇÁè∆ÇÁÇ∑åı
-    cb.lightColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+    // ÂÖâÊ∫êË®≠ÂÆö
+    cb.lightDir = XMFLOAT3(0.2f, -1.0f, 0.3f); // ÊñπÂêëÔºàÊ≠£Ë¶èÂåñ„Åß„Å™„Åè„Å¶„ÇÇPS„ÅßÊ≠£Ë¶èÂåñÔºâ
+    cb.lightIntensity = 1.0f;
+    cb.lightColor = XMFLOAT4(1, 1, 1, 1);
+    cb.ambientColor = XMFLOAT4(0.06f, 0.06f, 0.07f, 1.0f); // „Åª„Çì„ÅÆ„ÇäÈùí„Åø
+    cb.view = XMMatrixTranspose(view);
+    cb.proj = XMMatrixTranspose(proj);
 
-    // GPUÇ≈èÓïÒÇëóêM
-    mContext->UpdateSubresource(mConstantBuffer.Get(), 0, nullptr, &cb, 0, 0);
+    // „Ç´„É°„É©‰ΩçÁΩÆÔºàeye „ÇíÂÖ•„Çå„ÇãÔºâ
+    cb.camPos = mCamera.GetPosition();
 
-    // ÉNÉäÉA
-    const float clear[4] = { 0.1f, 0.1f, 0.2f, 1.0f };
+    const float clear[4] = { 0.05f, 0.05f, 0.1f, 1.0f };
     mContext->ClearRenderTargetView(mRTV.Get(), clear);
     mContext->ClearDepthStencilView(mDSV.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
 
-    // ÉpÉCÉvÉâÉCÉìê›íË
+    // „Éë„Ç§„Éó„É©„Ç§„É≥Ë®≠ÂÆö
     UINT stride = sizeof(Vertex), offset = 0;
     mContext->IASetVertexBuffers(0, 1, mVB.GetAddressOf(), &stride, &offset);
-    mContext->IASetIndexBuffer(mIB.Get(), DXGI_FORMAT_R16_UINT, 0);
+    mContext->IASetIndexBuffer(mIB.Get(), DXGI_FORMAT_R32_UINT, 0);
     mContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     mContext->IASetInputLayout(mInputLayout.Get());
-
     mContext->VSSetShader(mVS.Get(), nullptr, 0);
-    mContext->VSSetConstantBuffers(0, 1, mConstantBuffer.GetAddressOf());
     mContext->PSSetShader(mPS.Get(), nullptr, 0);
+    mContext->VSSetConstantBuffers(0, 1, mConstantBuffer.GetAddressOf());
     mContext->PSSetConstantBuffers(0, 1, mConstantBuffer.GetAddressOf());
+    mContext->PSSetShaderResources(0, 1, mTextureSRV.GetAddressOf());
+    mContext->PSSetSamplers(0, 1, mSamplerState.GetAddressOf());
 
-    // ï`âÊ
-    mContext->DrawIndexed(3, 0, 0);
+    // „Éû„ÉÜ„É™„Ç¢„É´
+    cb.materialColor = XMFLOAT4(1, 1, 1, 1); // „Ç¢„É´„Éô„Éâ‰πóÁÆóÔºàÁôΩÔºùÁÑ°Âä†Â∑•Ôºâ
+    cb.specPower = 64.0f;                // Èè°Èù¢„ÅÆÈã≠„Åï
+    cb.useTexture = 1u;                   // „ÉÜ„ÇØ„Çπ„ÉÅ„É£„Çí‰Ωø„ÅÜ
+
+    // --- „É¢„Éá„É´1 ---
+    XMMATRIX world1 = XMMatrixScaling(0.5f, 0.5f, 0.5f)
+        * XMMatrixTranslation(-1.0f, 0.0f, 0.0f)
+        * XMMatrixRotationY(time);
+    cb.world = XMMatrixTranspose(world1);
+    mContext->UpdateSubresource(mConstantBuffer.Get(), 0, nullptr, &cb, 0, 0);
+    mContext->DrawIndexed(mIndexCount, 0, 0);
+
+    // --- „É¢„Éá„É´2 ---
+    XMMATRIX world2 = XMMatrixScaling(0.5f, 0.5f, 0.5f)
+        * XMMatrixTranslation(1.0f, 0.0f, 0.0f)
+        * XMMatrixRotationY(-time * 0.5f);
+    cb.world = XMMatrixTranspose(world2);
+    mContext->UpdateSubresource(mConstantBuffer.Get(), 0, nullptr, &cb, 0, 0);
+    mContext->DrawIndexed(mIndexCount, 0, 0);
+
     mSwapChain->Present(1, 0);
 }
 
@@ -193,16 +371,16 @@ void D3DApp::OnResize(UINT width, UINT height)
     mRTV.Reset();
     mDSV.Reset();
 
-    // ÉXÉèÉbÉvÉ`ÉFÅ[ÉìÇÃÉTÉCÉYïœçX
+    // „Çπ„ÉØ„ÉÉ„Éó„ÉÅ„Çß„Éº„É≥„ÅÆ„Çµ„Ç§„Ç∫Â§âÊõ¥
     mSwapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
 
-    // êVÇµÇ¢ÉTÉCÉYÇ≈RTV / DSV çƒê∂ê¨
+    // Êñ∞„Åó„ÅÑ„Çµ„Ç§„Ç∫„ÅßRTV / DSV ÂÜçÁîüÊàê
     CreateRenderTargetAndDepth(width, height);
 }
 
 void D3DApp::Cleanup()
 {
-    // èáî‘ÇÕèdóvÅiContext Å® SwapChain Å® DeviceÅj
+    // È†ÜÁï™„ÅØÈáçË¶ÅÔºàContext ‚Üí SwapChain ‚Üí DeviceÔºâ
     if (mContext) {
         mContext->ClearState();
         mContext->Flush();

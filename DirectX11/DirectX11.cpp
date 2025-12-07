@@ -53,6 +53,17 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow)
         else
         {
             t += 0.01f;
+
+            // カメラ操作
+            if (GetAsyncKeyState('W') & 0x8000) gApp.mCamera.Move(0, 0, 0.02f);
+            if (GetAsyncKeyState('S') & 0x8000) gApp.mCamera.Move(0, 0, -0.02f);
+            if (GetAsyncKeyState('A') & 0x8000) gApp.mCamera.Move(-0.02f, 0, 0);
+            if (GetAsyncKeyState('D') & 0x8000) gApp.mCamera.Move(0.02f, 0, 0);
+            if (GetAsyncKeyState(VK_LEFT) & 0x8000) gApp.mCamera.Rotate(-0.02f, 0);
+            if (GetAsyncKeyState(VK_RIGHT) & 0x8000) gApp.mCamera.Rotate(0.02f, 0);
+            if (GetAsyncKeyState(VK_UP) & 0x8000) gApp.mCamera.Rotate(0, 0.02f);
+            if (GetAsyncKeyState(VK_DOWN) & 0x8000) gApp.mCamera.Rotate(0, -0.02f);
+
             gApp.Render(t);
         }
     }
