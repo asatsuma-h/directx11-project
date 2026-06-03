@@ -5,12 +5,8 @@ Windowsネイティブアプリケーションとして、FBX SDKによるモデ
 
 ## Demo
 
-> GIF追加予定  
-> `docs/demo.gif` を追加後、下記コメントアウトを有効化してください。
+<img width="264" height="148" alt="directx_demo" src="https://github.com/user-attachments/assets/7fc94d36-761b-4369-9081-845f2ffa8ef1" />
 
-<!--
-![DirectX 11 FBX Model Viewer Demo](docs/demo.gif)
--->
 
 ## Features
 
